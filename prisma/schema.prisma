@@ -1,0 +1,738 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRoleName {
+  CUSTOMER
+  ADMIN
+  CATALOG_MANAGER
+  INVENTORY_MANAGER
+  CONTENT_MANAGER
+  SUPPORT_AGENT
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PAID
+  PROCESSING
+  PACKED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+  RETURNED
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum CouponScope {
+  ALL_PRODUCTS
+  PRODUCT_CATEGORY
+  PRODUCT_SPECIFIC
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum InventoryMovementType {
+  STOCK_IN
+  STOCK_OUT
+  RESERVATION
+  RESERVED_RELEASE
+  ADJUSTMENT
+}
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model User {
+  id              String       @id @default(cuid())
+  email           String       @unique
+  name            String?
+  phone           String?
+  passwordHash    String?
+  isActive        Boolean      @default(true)
+  deletedAt       DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  sessions        Session[]
+  accounts        Account[]
+  verificationTokens VerificationToken[]
+  customerProfile CustomerProfile?
+  addresses       Address[]
+  carts           Cart[]
+  orders          Order[]
+  reviews         Review[]
+  auditLogs       AuditLog[]
+  userRoles       UserRole[]
+  blogPosts       BlogPost[]
+  supportTickets  SupportTicket[]
+  wishlists       Wishlist[]
+  subscriptions   Subscription[]
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  slug        String           @unique
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  permissions RolePermission[]
+  userRoles   UserRole[]
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  slug        String           @unique
+  description String?
+  createdAt   DateTime         @default(now())
+
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  user   User @relation(fields: [userId], references: [id])
+  role   Role @relation(fields: [roleId], references: [id])
+
+  @@id([userId, roleId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id])
+}
+
+model Account {
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User     @relation(fields: [userId], references: [id])
+
+  @@unique([provider, providerAccountId])
+}
+
+model VerificationToken {
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
+  purpose    String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model CustomerProfile {
+  id               String      @id @default(cuid())
+  userId           String      @unique
+  phone            String?
+  marketingOptIn  Boolean     @default(false)
+  preferencesJson  Json?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  user             User        @relation(fields: [userId], references: [id])
+  addresses        Address[]
+}
+
+model Address {
+  id                 String           @id @default(cuid())
+  customerProfileId  String?
+  userId             String?
+  fullName           String
+  line1              String
+  line2              String?
+  city               String
+  state              String
+  postalCode         String
+  country            String
+  phone              String?
+  isDefaultShipping  Boolean          @default(false)
+  isDefaultBilling   Boolean          @default(false)
+  deletedAt          DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  customerProfile    CustomerProfile? @relation(fields: [customerProfileId], references: [id])
+  user               User?            @relation(fields: [userId], references: [id])
+  ordersShipping     Order[]          @relation("OrderShippingAddress")
+  ordersBilling      Order[]          @relation("OrderBillingAddress")
+}
+
+model Brand {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  slug      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  products  Product[]
+}
+
+model Category {
+  id        String     @id @default(cuid())
+  name      String
+  slug      String     @unique
+  parentId  String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  deletedAt DateTime?
+
+  parent    Category?  @relation("CategoryParent", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryParent")
+  products  Product[]
+}
+
+model Collection {
+  id          String             @id @default(cuid())
+  name        String
+  slug        String             @unique
+  description String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  deletedAt   DateTime?
+
+  products    ProductCollection[]
+}
+
+model Product {
+  id               String               @id @default(cuid())
+  name             String
+  slug             String               @unique
+  description      String?
+  shortDescription String?
+  brandId          String?
+  categoryId       String?
+  isActive         Boolean              @default(true)
+  isFeatured       Boolean              @default(false)
+  publishedAt      DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  deletedAt        DateTime?
+
+  brand            Brand?               @relation(fields: [brandId], references: [id])
+  category         Category?            @relation(fields: [categoryId], references: [id])
+  variants         ProductVariant[]
+  media            ProductMedia[]
+  tags             ProductTag[]
+  ingredients      ProductIngredient[]
+  reviews          Review[]
+  collections      ProductCollection[]
+  cartItems        CartItem[]
+  wishlistItems    WishlistItem[]
+  inventoryLevels  InventoryLevel[]
+  orderItems       OrderItem[]
+}
+
+model ProductVariant {
+  id               String               @id @default(cuid())
+  productId        String
+  sku              String               @unique
+  name             String
+  price            Decimal
+  compareAtPrice   Decimal?
+  costPrice        Decimal?
+  weightGrams      Int?
+  stockStatus      String               @default("IN_STOCK")
+  isDefault        Boolean              @default(false)
+  isActive         Boolean              @default(true)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  deletedAt        DateTime?
+
+  product          Product              @relation(fields: [productId], references: [id])
+  inventoryLevels  InventoryLevel[]
+  cartItems        CartItem[]
+  orderItems       OrderItem[]
+  reservations     InventoryReservation[]
+  stockMovements   StockMovement[]
+}
+
+model ProductMedia {
+  id              String    @id @default(cuid())
+  productId       String
+  variantId       String?
+  url             String
+  altText         String?
+  kind            String
+  sortOrder       Int       @default(0)
+  createdAt       DateTime  @default(now())
+
+  product         Product   @relation(fields: [productId], references: [id])
+}
+
+model Tag {
+  id        String        @id @default(cuid())
+  name      String        @unique
+  slug      String        @unique
+  createdAt DateTime      @default(now())
+
+  products  ProductTag[]
+}
+
+model ProductTag {
+  productId String
+  tagId     String
+
+  product   Product @relation(fields: [productId], references: [id])
+  tag       Tag     @relation(fields: [tagId], references: [id])
+
+  @@id([productId, tagId])
+}
+
+model Ingredient {
+  id        String               @id @default(cuid())
+  name      String               @unique
+  slug      String               @unique
+  createdAt DateTime             @default(now())
+
+  products  ProductIngredient[]
+}
+
+model ProductIngredient {
+  productId     String
+  ingredientId  String
+  description   String?
+
+  product       Product     @relation(fields: [productId], references: [id])
+  ingredient    Ingredient  @relation(fields: [ingredientId], references: [id])
+
+  @@id([productId, ingredientId])
+}
+
+model ProductCollection {
+  productId    String
+  collectionId String
+
+  product      Product     @relation(fields: [productId], references: [id])
+  collection   Collection  @relation(fields: [collectionId], references: [id])
+
+  @@id([productId, collectionId])
+}
+
+model Cart {
+  id        String      @id @default(cuid())
+  userId    String
+  status    String      @default("ACTIVE")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  user      User        @relation(fields: [userId], references: [id])
+  items     CartItem[]
+}
+
+model CartItem {
+  id                String          @id @default(cuid())
+  cartId            String
+  productId         String
+  productVariantId  String
+  quantity          Int
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  cart              Cart            @relation(fields: [cartId], references: [id])
+  product           Product         @relation(fields: [productId], references: [id])
+  productVariant    ProductVariant  @relation(fields: [productVariantId], references: [id])
+
+  @@unique([cartId, productVariantId])
+}
+
+model Coupon {
+  id                String         @id @default(cuid())
+  code              String         @unique
+  name              String
+  description       String?
+  type              CouponType
+  scope             CouponScope    @default(ALL_PRODUCTS)
+  value             Decimal
+  minOrderAmount    Decimal?
+  usageLimit        Int?
+  perCustomerLimit  Int?
+  startsAt          DateTime?
+  expiresAt         DateTime?
+  isActive          Boolean        @default(true)
+  deletedAt         DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  usages            CouponUsage[]
+}
+
+model CouponUsage {
+  id          String    @id @default(cuid())
+  couponId    String
+  userId      String?
+  orderId     String?
+  usedAt      DateTime  @default(now())
+
+  coupon      Coupon    @relation(fields: [couponId], references: [id])
+}
+
+model Order {
+  id                  String                @id @default(cuid())
+  orderNumber         String                @unique
+  userId              String
+  shippingAddressId   String
+  billingAddressId    String
+  couponId            String?
+  subtotal            Decimal
+  discountAmount      Decimal               @default(0)
+  shippingAmount      Decimal               @default(0)
+  totalAmount         Decimal
+  status              OrderStatus           @default(PENDING)
+  deletedAt           DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  user                User                  @relation(fields: [userId], references: [id])
+  shippingAddress     Address               @relation("OrderShippingAddress", fields: [shippingAddressId], references: [id])
+  billingAddress      Address               @relation("OrderBillingAddress", fields: [billingAddressId], references: [id])
+  items               OrderItem[]
+  statuses            OrderStatusHistory[]
+  payment             Payment?
+  shipments           Shipment[]
+}
+
+model OrderItem {
+  id                String          @id @default(cuid())
+  orderId           String
+  productId         String
+  productVariantId  String
+  quantity          Int
+  unitPrice         Decimal
+  lineTotal         Decimal
+  createdAt         DateTime        @default(now())
+
+  order             Order           @relation(fields: [orderId], references: [id])
+  product           Product         @relation(fields: [productId], references: [id])
+  productVariant    ProductVariant  @relation(fields: [productVariantId], references: [id])
+}
+
+model OrderStatusHistory {
+  id          String      @id @default(cuid())
+  orderId     String
+  status      OrderStatus
+  note        String?
+  createdAt   DateTime    @default(now())
+
+  order       Order       @relation(fields: [orderId], references: [id])
+}
+
+model Payment {
+  id                String         @id @default(cuid())
+  orderId           String         @unique
+  gateway           String
+  gatewayReference  String?
+  amount            Decimal
+  currency          String         @default("INR")
+  status            PaymentStatus  @default(PENDING)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  order             Order          @relation(fields: [orderId], references: [id])
+  events            PaymentEvent[]
+  refunds           Refund[]
+}
+
+model PaymentEvent {
+  id            String    @id @default(cuid())
+  paymentId     String
+  eventType     String
+  payloadJson   Json?
+  createdAt     DateTime  @default(now())
+
+  payment       Payment   @relation(fields: [paymentId], references: [id])
+}
+
+model Refund {
+  id            String    @id @default(cuid())
+  paymentId     String
+  amount        Decimal
+  reason        String?
+  status        String    @default("PENDING")
+  createdAt     DateTime  @default(now())
+
+  payment       Payment   @relation(fields: [paymentId], references: [id])
+}
+
+model Shipment {
+  id              String    @id @default(cuid())
+  orderId         String
+  trackingNumber  String?
+  courier         String?
+  status          String    @default("PENDING")
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  order           Order     @relation(fields: [orderId], references: [id])
+}
+
+model InventoryLevel {
+  id                String                  @id @default(cuid())
+  productId         String
+  productVariantId  String
+  availableQuantity Int                     @default(0)
+  reservedQuantity  Int                     @default(0)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  product           Product                 @relation(fields: [productId], references: [id])
+  productVariant    ProductVariant          @relation(fields: [productVariantId], references: [id])
+  stockMovements    StockMovement[]
+  reservations      InventoryReservation[]
+
+  @@unique([productId, productVariantId])
+}
+
+model StockMovement {
+  id                  String                @id @default(cuid())
+  inventoryLevelId    String
+  productVariantId    String
+  movementType        InventoryMovementType
+  quantity            Int
+  reason              String?
+  referenceType       String?
+  referenceId         String?
+  createdAt           DateTime              @default(now())
+
+  inventoryLevel      InventoryLevel        @relation(fields: [inventoryLevelId], references: [id])
+  productVariant      ProductVariant        @relation(fields: [productVariantId], references: [id])
+}
+
+model InventoryReservation {
+  id                String          @id @default(cuid())
+  orderId           String
+  inventoryLevelId  String
+  productVariantId  String
+  quantity          Int
+  status            String          @default("ACTIVE")
+  expiresAt         DateTime?
+  createdAt         DateTime        @default(now())
+
+  inventoryLevel    InventoryLevel  @relation(fields: [inventoryLevelId], references: [id])
+  productVariant    ProductVariant  @relation(fields: [productVariantId], references: [id])
+}
+
+model Review {
+  id                 String        @id @default(cuid())
+  productId          String
+  userId             String
+  rating             Int
+  title              String?
+  body               String?
+  status             ReviewStatus  @default(PENDING)
+  isVerifiedPurchase Boolean       @default(false)
+  helpfulCount       Int           @default(0)
+  deletedAt          DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  product            Product       @relation(fields: [productId], references: [id])
+  user               User          @relation(fields: [userId], references: [id])
+}
+
+model SeoMeta {
+  id              String   @id @default(cuid())
+  entityType      String
+  entityId        String
+  title           String?
+  metaDescription String?
+  canonicalUrl    String?
+  ogTitle         String?
+  ogDescription   String?
+  ogImageUrl      String?
+  robots          String?
+  schemaJson      Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([entityType, entityId])
+}
+
+model Page {
+  id            String        @id @default(cuid())
+  slug          String        @unique
+  title         String
+  content       String
+  type          String        @default("PAGE")
+  status        ContentStatus @default(DRAFT)
+  publishedAt   DateTime?
+  deletedAt     DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model BlogCategory {
+  id        String      @id @default(cuid())
+  name      String      @unique
+  slug      String      @unique
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  posts     BlogPost[]
+}
+
+model BlogPost {
+  id              String        @id @default(cuid())
+  slug            String        @unique
+  title           String
+  excerpt         String?
+  content         String
+  categoryId      String?
+  authorId        String?
+  status          ContentStatus @default(DRAFT)
+  publishedAt     DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  category        BlogCategory? @relation(fields: [categoryId], references: [id])
+  author          User?         @relation(fields: [authorId], references: [id])
+}
+
+model FaqEntry {
+  id           String        @id @default(cuid())
+  question     String
+  answer       String
+  category     String?
+  sortOrder    Int           @default(0)
+  status       ContentStatus @default(PUBLISHED)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model SiteSetting {
+  id            String   @id @default(cuid())
+  key           String   @unique
+  value         String
+  description   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorId     String?
+  entityType  String
+  entityId    String
+  action      String
+  metadataJson Json?
+  createdAt   DateTime @default(now())
+
+  actor       User?    @relation(fields: [actorId], references: [id])
+}
+
+model NewsletterSubscriber {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+}
+
+model Wishlist {
+  id        String          @id @default(cuid())
+  userId    String
+  name      String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  user      User            @relation(fields: [userId], references: [id])
+  items     WishlistItem[]
+}
+
+model WishlistItem {
+  id         String   @id @default(cuid())
+  wishlistId String
+  productId  String
+  createdAt  DateTime @default(now())
+
+  wishlist   Wishlist @relation(fields: [wishlistId], references: [id])
+  product    Product  @relation(fields: [productId], references: [id])
+}
+
+model Subscription {
+  id              String    @id @default(cuid())
+  userId          String
+  productVariantId String?
+  status          String    @default("ACTIVE")
+  intervalDays    Int?
+  nextChargeAt    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id])
+}
+
+model SupportTicket {
+  id          String    @id @default(cuid())
+  userId      String?
+  subject     String
+  body        String
+  status      String    @default("OPEN")
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user        User?     @relation(fields: [userId], references: [id])
+}
